@@ -68,7 +68,7 @@ App: http://localhost:3000 · API: http://localhost:3001
 2. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → connect the repo (uses `render.yaml`),  
    **or** **New Web Service** with:
    - **Root directory:** `backend`
-   - **Build:** `npm install && npm run build`
+   - **Build:** `npm install --include=dev && npm run build && npm prune --omit=dev`
    - **Start:** `npm start`
    - **Health check path:** `/health`
 3. Set environment variables:
