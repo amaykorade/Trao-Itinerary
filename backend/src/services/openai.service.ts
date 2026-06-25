@@ -161,6 +161,7 @@ export async function generateFullItinerary(trip: ITrip): Promise<GeneratedTripP
           schema: TRIP_PLAN_SCHEMA,
         },
       },
+      max_tokens: 4000,
     });
 
     const content = response.choices[0]?.message?.content;
@@ -249,6 +250,7 @@ Return exactly 3-5 activities for Day ${dayNumber}. Use day number ${dayNumber} 
           schema: DAY_PLAN_SCHEMA,
         },
       },
+      max_tokens: 1200,
     });
 
     const content = response.choices[0]?.message?.content;

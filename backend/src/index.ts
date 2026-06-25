@@ -8,6 +8,7 @@ import authRoutes from './routes/auth.routes';
 import tripRoutes from './routes/trip.routes';
 import shareRoutes from './routes/share.routes';
 import { errorHandler } from './middleware/errorHandler';
+import { generalApiLimiter } from './middleware/rateLimit';
 
 const app = express();
 
@@ -26,6 +27,8 @@ app.use(
   })
 );
 app.use(express.json());
+
+app.use('/api', generalApiLimiter);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });

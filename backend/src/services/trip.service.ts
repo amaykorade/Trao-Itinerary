@@ -55,6 +55,7 @@ const reorderActivitiesSchema = z.object({
 });
 
 const MAX_TRIP_VERSIONS = 10;
+const MAX_TRIPS_PER_USER = 20;
 
 function cloneTripSnapshot(trip: ITrip) {
   return {
@@ -168,6 +169,10 @@ async function findOwnedTrip(tripId: string, userId: string): Promise<ITrip> {
 }
 
 async function applyGeneratedPlan(trip: ITrip): Promise<ITrip> {
+  if (trip.status === 'generating') {
+    throw new AppError(409, 'This trip is already being generated. Please wait.');
+  }
+
   trip.status = 'generating';
   await trip.save();
 
@@ -194,13 +199,20 @@ export async function listTrips(userId: string): Promise<TripSummary[]> {
 export async function createTrip(userId: string, input: unknown): Promise<TripDetail> {
   const data = createTripSchema.parse(input);
 
+  const tripCount = await Trip.countDocuments({ userId });
+  if (tripCount >= MAX_TRIPS_PER_USER) {
+    throw new AppError(
+      429,
+      `Trip limit reached (${MAX_TRIPS_PER_USER}). Delete an existing trip to create a new one.`
+    );
+  }
+
   const trip = await Trip.create({
     userId,
     destination: data.destination,
     numDays: data.numDays,
     budgetType: data.budgetType,
     interests: data.interests,
-    status: 'generating',
   });
 
   const generated = await applyGeneratedPlan(trip);

@@ -135,6 +135,19 @@ curl -I https://trao-web.onrender.com
 
 Free-tier services spin down after inactivity; the first request after idle can take ~30 seconds.
 
+## Rate limits (production)
+
+To protect the OpenAI API key and server resources:
+
+| Limit | Value |
+|-------|--------|
+| AI generations per user | 15 / hour (create trip, full regenerate, day regenerate) |
+| Trips per user | 20 max |
+| Auth attempts per IP | 20 / 15 min |
+| General API requests | 300 / 15 min per user |
+
+Limits are disabled in local development (`NODE_ENV=development`). OpenAI calls also use `max_tokens` caps on responses.
+
 ## Google sign-in
 
 1. OAuth client type: **Web application**
