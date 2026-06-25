@@ -13,8 +13,9 @@ Trip planner with day-by-day itineraries, budget breakdowns, and hotel suggestio
 
 ## Stack
 
-- **Frontend:** Next.js, TypeScript, Tailwind → [Vercel](https://vercel.com)
-- **Backend:** Express, TypeScript, Mongoose → [Render](https://render.com)
+- **Frontend:** Next.js, TypeScript, Tailwind
+- **Backend:** Express, TypeScript, Mongoose
+- **Hosting:** [Render](https://render.com) (two Web Services)
 - **Database:** MongoDB Atlas
 - **Itineraries:** OpenAI GPT-4o-mini
 
@@ -53,25 +54,32 @@ cd frontend && npm run dev
 
 App: http://localhost:3000 · API: http://localhost:3001
 
-## Deploy
+## Deploy on Render
+
+Both services are defined in [`render.yaml`](render.yaml). You can deploy with a Blueprint or create two Web Services manually.
 
 ### 1. MongoDB Atlas
 
 1. Create a free cluster at [mongodb.com/atlas](https://www.mongodb.com/atlas).
-2. Database user + password.
+2. Create a database user and password.
 3. Network access: allow `0.0.0.0/0` (Render uses dynamic IPs).
-4. Copy the connection string into `MONGODB_URI`.
+4. Copy the connection string for `MONGODB_URI`.
 
-### 2. Backend on Render
+### 2. Blueprint (recommended)
 
 1. Push this repo to GitHub.
-2. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → connect the repo (uses `render.yaml`),  
-   **or** **New Web Service** with:
-   - **Root directory:** `backend`
-   - **Build:** `npm install --include=dev && npm run build && npm prune --omit=dev`
-   - **Start:** `npm start`
-   - **Health check path:** `/health`
-3. Set environment variables:
+2. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → connect the repo.
+3. Render creates **trao-api** (backend) and **trao-web** (frontend) from `render.yaml`.
+4. Fill in the prompted secrets when the Blueprint syncs.
+
+### 3. Backend service (`trao-api`)
+
+| Setting | Value |
+|---------|--------|
+| Root directory | `backend` |
+| Build command | `npm install --include=dev && npm run build && npm prune --omit=dev` |
+| Start command | `npm start` |
+| Health check path | `/health` |
 
 | Variable | Value |
 |----------|--------|
@@ -79,49 +87,60 @@ App: http://localhost:3000 · API: http://localhost:3001
 | `MONGODB_URI` | Atlas connection string |
 | `JWT_SECRET` | Long random string (32+ chars) |
 | `OPENAI_API_KEY` | Your OpenAI key |
-| `CORS_ORIGIN` | `https://YOUR-APP.vercel.app,https://*.vercel.app` |
+| `CORS_ORIGIN` | `https://trao-web.onrender.com` (your frontend Render URL) |
 | `GOOGLE_CLIENT_ID` | Optional, same as local |
 
-4. Deploy and copy the service URL (e.g. `https://trao-api.onrender.com`).
+`CORS_ORIGIN` accepts comma-separated URLs. Example with a custom domain:
 
-`CORS_ORIGIN` accepts comma-separated URLs. Use `https://*.vercel.app` to allow Vercel preview deploys.
+```
+https://trao-web.onrender.com,https://yourdomain.com
+```
 
-### 3. Frontend on Vercel
+Deploy the backend first and note the URL (e.g. `https://trao-api.onrender.com`).
 
-1. [vercel.com/new](https://vercel.com/new) → import the GitHub repo.
-2. **Root directory:** `frontend`
-3. Framework: Next.js (auto-detected).
-4. Environment variables:
+### 4. Frontend service (`trao-web`)
+
+| Setting | Value |
+|---------|--------|
+| Root directory | `frontend` |
+| Build command | `npm install --include=dev && npm run build && npm prune --omit=dev` |
+| Start command | `npm start` |
 
 | Variable | Value |
 |----------|--------|
-| `NEXT_PUBLIC_API_URL` | Render backend URL (no trailing slash) |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Same as backend, if using Google login |
+| `NODE_ENV` | `production` |
+| `NEXT_PUBLIC_API_URL` | Backend URL, e.g. `https://trao-api.onrender.com` (no trailing slash) |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Optional, same as backend |
 
-5. Deploy and copy the Vercel URL.
+`NEXT_PUBLIC_*` variables are baked in at build time. After the backend URL is final, set `NEXT_PUBLIC_API_URL` and **redeploy** the frontend if the first build used a placeholder.
 
-### 4. Post-deploy
+### 5. Post-deploy
 
-1. Update Render `CORS_ORIGIN` with your real Vercel URL if you used a placeholder.
-2. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), add production URLs:
-   - **Authorized JavaScript origins:** `https://YOUR-APP.vercel.app`
-   - **Authorized redirect URIs:** `https://YOUR-APP.vercel.app`
-3. Open `https://YOUR-APP.vercel.app` and create a test trip.
+1. Set backend `CORS_ORIGIN` to your live frontend URL (`https://trao-web.onrender.com`).
+2. Redeploy the backend if you changed `CORS_ORIGIN`.
+3. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), add:
+   - **Authorized JavaScript origins:** `https://trao-web.onrender.com`
+   - **Authorized redirect URIs:** `https://trao-web.onrender.com`
+4. Open the frontend URL and create a test trip.
 
-### Smoke test (production API)
+### Smoke tests
 
 ```bash
-curl https://YOUR-API.onrender.com/health
+curl https://trao-api.onrender.com/health
+# {"status":"ok"}
+
+curl -I https://trao-web.onrender.com
+# HTTP 200
 ```
 
-Should return `{"status":"ok"}`.
+Free-tier services spin down after inactivity; the first request after idle can take ~30 seconds.
 
 ## Google sign-in
 
 1. OAuth client type: **Web application**
 2. Consent screen: **External** (not Internal)
-3. Add localhost + production Vercel URL to authorized origins
-4. Add test users while app is in Testing mode
+3. Authorized origins: `http://localhost:3000` and `https://trao-web.onrender.com`
+4. Add test users while the app is in Testing mode
 5. Same client ID in `GOOGLE_CLIENT_ID` (backend) and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (frontend)
 
 ## API

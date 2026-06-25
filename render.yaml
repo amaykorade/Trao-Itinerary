@@ -10,8 +10,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
       - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET
@@ -21,4 +19,22 @@ services:
       - key: CORS_ORIGIN
         sync: false
       - key: GOOGLE_CLIENT_ID
+        sync: false
+
+  - type: web
+    name: trao-web
+    runtime: node
+    rootDir: frontend
+    plan: free
+    buildCommand: npm install --include=dev && npm run build && npm prune --omit=dev
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: trao-api
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: NEXT_PUBLIC_GOOGLE_CLIENT_ID
         sync: false
