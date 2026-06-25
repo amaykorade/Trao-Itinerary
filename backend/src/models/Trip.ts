@@ -91,7 +91,7 @@ const tripSchema = new Schema<ITrip>(
     itinerary: { type: [dayPlanSchema], default: [] },
     budget: { type: budgetSchema, default: null },
     hotels: { type: [hotelSchema], default: [] },
-    shareToken: { type: String, default: null, sparse: true, unique: true },
+    shareToken: { type: String },
     finalizedAt: { type: Date, default: null },
     versions: { type: [tripVersionSchema], default: [] },
     status: {
@@ -104,5 +104,12 @@ const tripSchema = new Schema<ITrip>(
 );
 
 tripSchema.index({ userId: 1, createdAt: -1 });
+tripSchema.index(
+  { shareToken: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { shareToken: { $exists: true, $type: 'string' } },
+  }
+);
 
 export const Trip = mongoose.model<ITrip>('Trip', tripSchema);

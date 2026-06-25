@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import mongoose from 'mongoose';
+import { MongoServerError } from 'mongodb';
 import { AppError } from '../utils/AppError';
 
 export function errorHandler(
@@ -27,6 +28,11 @@ export function errorHandler(
 
   if (err instanceof mongoose.Error.ValidationError) {
     res.status(400).json({ error: 'Invalid trip data. Please try again.' });
+    return;
+  }
+
+  if (err instanceof MongoServerError && err.code === 11000) {
+    res.status(409).json({ error: 'A conflicting record already exists. Please try again.' });
     return;
   }
 

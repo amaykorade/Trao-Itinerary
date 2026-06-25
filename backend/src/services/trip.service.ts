@@ -135,7 +135,7 @@ function toTripDetail(trip: ITrip): TripDetail {
     itinerary: trip.itinerary,
     budget: trip.budget,
     hotels: trip.hotels,
-    shareToken: trip.shareToken,
+    shareToken: trip.shareToken ?? null,
     versions: (trip.versions || []).map((version) => ({
       id: version.id,
       label: version.label,
@@ -422,9 +422,10 @@ export async function enableTripShare(tripId: string, userId: string): Promise<T
 export async function disableTripShare(tripId: string, userId: string): Promise<TripDetail> {
   const trip = await findOwnedTrip(tripId, userId);
 
-  trip.shareToken = null;
-  await trip.save();
-  return toTripDetail(trip);
+  await Trip.updateOne({ _id: trip._id }, { $unset: { shareToken: '' } });
+
+  const updated = await findOwnedTrip(tripId, userId);
+  return toTripDetail(updated);
 }
 
 export async function getSharedTrip(shareToken: string): Promise<SharedTrip> {
