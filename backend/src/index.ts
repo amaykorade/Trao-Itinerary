@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './config/env';
+import { isCorsOriginAllowed } from './config/cors';
 import { connectDB } from './config/db';
 import authRoutes from './routes/auth.routes';
 import tripRoutes from './routes/trip.routes';
@@ -10,10 +11,17 @@ import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
 
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(
   cors({
-    origin: env.CORS_ORIGIN,
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      callback(null, isCorsOriginAllowed(origin, env.corsOrigins));
+    },
     credentials: true,
   })
 );
@@ -31,7 +39,7 @@ app.use(errorHandler);
 
 async function start(): Promise<void> {
   await connectDB();
-  app.listen(env.PORT, () => {
+  app.listen(env.PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${env.PORT}`);
   });
 }

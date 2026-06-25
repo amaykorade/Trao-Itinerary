@@ -1,6 +1,7 @@
 import path from 'path';
 import { z } from 'zod';
 import dotenv from 'dotenv';
+import { parseCorsOrigins } from './cors';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -21,7 +22,12 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+const data = parsed.data;
+
+export const env = {
+  ...data,
+  corsOrigins: parseCorsOrigins(data.CORS_ORIGIN),
+};
 
 if (!env.OPENAI_API_KEY) {
   console.warn('Warning: OPENAI_API_KEY is not set — itinerary generation will be unavailable');
