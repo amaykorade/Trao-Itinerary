@@ -1,11 +1,14 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { env } from '../config/env';
 import { AuthRequest } from './auth';
 
 const isDev = env.NODE_ENV === 'development';
 
 function userOrIpKey(req: AuthRequest): string {
-  return req.user?.id ?? req.ip ?? 'unknown';
+  if (req.user?.id) {
+    return req.user.id;
+  }
+  return ipKeyGenerator(req.ip ?? 'unknown');
 }
 
 export const authRateLimiter = rateLimit({

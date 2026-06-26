@@ -42,6 +42,29 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, [user]);
 
+  const hasGeneratingTrips = trips.some((trip) => trip.status === 'generating');
+
+  useEffect(() => {
+    if (!user || !hasGeneratingTrips) return;
+
+    const refreshTrips = () => {
+      api
+        .listTrips()
+        .then(({ trips: fetched }) => {
+          const sorted = [...fetched].sort(
+            (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
+          setTrips(sorted);
+        })
+        .catch(() => {
+          // Ignore transient poll errors on the dashboard.
+        });
+    };
+
+    const interval = setInterval(refreshTrips, 3000);
+    return () => clearInterval(interval);
+  }, [user, hasGeneratingTrips]);
+
   const filteredTrips = useMemo(
     () => trips.filter((trip) => matchesTripSearch(trip, search)),
     [trips, search]

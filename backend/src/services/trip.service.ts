@@ -56,6 +56,7 @@ const reorderActivitiesSchema = z.object({
 
 const MAX_TRIP_VERSIONS = 10;
 const MAX_TRIPS_PER_USER = 20;
+const GENERATION_STALE_MS = 10 * 60 * 1000;
 
 function cloneTripSnapshot(trip: ITrip) {
   return {
@@ -168,27 +169,63 @@ async function findOwnedTrip(tripId: string, userId: string): Promise<ITrip> {
   return trip;
 }
 
-async function applyGeneratedPlan(trip: ITrip): Promise<ITrip> {
+async function reconcileStaleGeneration(trip: ITrip): Promise<ITrip> {
+  if (trip.status !== 'generating') {
+    return trip;
+  }
+
+  const ageMs = Date.now() - trip.updatedAt.getTime();
+  if (ageMs <= GENERATION_STALE_MS) {
+    return trip;
+  }
+
+  trip.status = 'failed';
+  await trip.save();
+  return trip;
+}
+
+function assertNotGenerating(trip: ITrip): void {
   if (trip.status === 'generating') {
     throw new AppError(409, 'This trip is already being generated. Please wait.');
   }
+}
 
+async function markTripGenerating(trip: ITrip): Promise<void> {
+  assertNotGenerating(trip);
   trip.status = 'generating';
   await trip.save();
+}
+
+async function runTripGenerationInBackground(tripId: string): Promise<void> {
+  const trip = await Trip.findById(tripId);
+  if (!trip || trip.status !== 'generating') {
+    return;
+  }
 
   try {
     const generated = await openaiService.generateFullItinerary(trip);
-    trip.itinerary = generated.itinerary;
-    trip.budget = generated.budget;
-    trip.hotels = generated.hotels;
-    trip.status = 'generated';
-    await trip.save();
-    return trip;
+    const current = await Trip.findById(tripId);
+    if (!current || current.status !== 'generating') {
+      return;
+    }
+
+    current.itinerary = generated.itinerary;
+    current.budget = generated.budget;
+    current.hotels = generated.hotels;
+    current.status = 'generated';
+    await current.save();
   } catch (err) {
-    trip.status = 'failed';
-    await trip.save();
-    throw err;
+    console.error(`Trip generation failed for ${tripId}:`, err);
+    const current = await Trip.findById(tripId);
+    if (current && current.status === 'generating') {
+      current.status = 'failed';
+      await current.save();
+    }
   }
+}
+
+function scheduleTripGeneration(tripId: string): void {
+  void runTripGenerationInBackground(tripId);
 }
 
 export async function listTrips(userId: string): Promise<TripSummary[]> {
@@ -213,25 +250,29 @@ export async function createTrip(userId: string, input: unknown): Promise<TripDe
     numDays: data.numDays,
     budgetType: data.budgetType,
     interests: data.interests,
+    status: 'generating',
   });
 
-  const generated = await applyGeneratedPlan(trip);
-  return toTripDetail(generated);
+  scheduleTripGeneration(trip._id.toString());
+  return toTripDetail(trip);
 }
 
 export async function generateTrip(tripId: string, userId: string): Promise<TripDetail> {
   const trip = await findOwnedTrip(tripId, userId);
   requireEditableTrip(trip);
   saveVersionBeforeRegenerate(trip, 'regenerate_all');
+
   if (trip.isModified('versions')) {
     await trip.save();
   }
-  const generated = await applyGeneratedPlan(trip);
-  return toTripDetail(generated);
+
+  await markTripGenerating(trip);
+  scheduleTripGeneration(tripId);
+  return toTripDetail(trip);
 }
 
 export async function getTrip(tripId: string, userId: string): Promise<TripDetail> {
-  const trip = await findOwnedTrip(tripId, userId);
+  const trip = await reconcileStaleGeneration(await findOwnedTrip(tripId, userId));
   return toTripDetail(trip);
 }
 

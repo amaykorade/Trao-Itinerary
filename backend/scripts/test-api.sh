@@ -15,6 +15,33 @@ yellow() { printf "\033[33m⚠ %s\033[0m\n" "$1"; }
 
 SKIP_TRIP_MUTATIONS=0
 
+wait_for_trip_generated() {
+  local trip_id="$1"
+  local attempts=40
+  local i=0
+  local body=""
+
+  while [ "$i" -lt "$attempts" ]; do
+    body=$(curl -s "$BASE/api/trips/$trip_id" -H "Authorization: Bearer $TOKEN")
+    local status
+    status=$(echo "$body" | python3 -c "import sys,json; print(json.load(sys.stdin)['trip']['status'])")
+
+    if [ "$status" = "generated" ]; then
+      echo "$body"
+      return 0
+    fi
+
+    if [ "$status" = "failed" ]; then
+      return 1
+    fi
+
+    sleep 2
+    i=$((i + 1))
+  done
+
+  return 1
+}
+
 assert_status() {
   local name="$1"
   local expected="$2"
@@ -190,8 +217,15 @@ CODE=$(echo "$RESP" | tail -n1)
 
 if [ "$CODE" -eq 201 ]; then
   assert_status "POST /api/trips" 201 "$CODE" "$BODY"
-  assert_json_field "Created trip has generated status with itinerary" "$BODY" "d['trip']['status']=='generated' and len(d['trip']['itinerary']) > 0 and d['trip']['budget'] is not None and len(d['trip']['hotels']) > 0"
+  assert_json_field "Created trip starts generating" "$BODY" "d['trip']['status']=='generating'"
   TRIP_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin)['trip']['id'])")
+  if BODY=$(wait_for_trip_generated "$TRIP_ID"); then
+    assert_json_field "Trip finishes generating with itinerary" "$BODY" "d['trip']['status']=='generated' and len(d['trip']['itinerary']) > 0 and d['trip']['budget'] is not None and len(d['trip']['hotels']) > 0"
+  else
+    red "Trip generation did not complete in time"
+    FAIL=$((FAIL + 1))
+    SKIP_TRIP_MUTATIONS=1
+  fi
 elif [ "$CODE" -eq 503 ] || [ "$CODE" -eq 502 ]; then
   yellow "POST /api/trips skipped — OPENAI_API_KEY not configured or AI failed (HTTP $CODE)"
   SKIP_TRIP_MUTATIONS=1
@@ -301,8 +335,14 @@ RESP=$(curl -s -w "\n%{http_code}" -X POST "$BASE/api/trips/$TRIP_ID/generate" \
 BODY=$(echo "$RESP" | sed '$d')
 CODE=$(echo "$RESP" | tail -n1)
 assert_status "POST /api/trips/:id/generate" 200 "$CODE" "$BODY"
-assert_json_field "Regenerate returns generated trip" "$BODY" "d['trip']['status']=='generated' and len(d['trip']['itinerary']) > 0"
-assert_json_field "Regenerate saves previous version" "$BODY" "len(d['trip']['versions']) >= 1 and d['trip']['versions'][0]['source']=='regenerate_all'"
+assert_json_field "Regenerate starts in background" "$BODY" "d['trip']['status']=='generating'"
+if BODY=$(wait_for_trip_generated "$TRIP_ID"); then
+  assert_json_field "Regenerate returns generated trip" "$BODY" "d['trip']['status']=='generated' and len(d['trip']['itinerary']) > 0"
+  assert_json_field "Regenerate saves previous version" "$BODY" "len(d['trip']['versions']) >= 1 and d['trip']['versions'][0]['source']=='regenerate_all'"
+else
+  red "Trip regeneration did not complete in time"
+  FAIL=$((FAIL + 1))
+fi
 VERSION_ID=$(echo "$BODY" | python3 -c "import sys, json; print(json.load(sys.stdin)['trip']['versions'][0]['id'])")
 echo
 

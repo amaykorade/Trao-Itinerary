@@ -18,6 +18,7 @@ import { AddActivityModal, ConfirmModal, RegenerateDayModal } from '@/components
 import { Alert } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { usePollTripWhileGenerating } from '@/hooks/usePollTripWhileGenerating';
 
 function withTripVersions(trip: TripDetail): TripDetail {
   return { ...trip, versions: trip.versions ?? [] };
@@ -49,6 +50,12 @@ export default function TripDetailPage() {
     const { trip } = await api.getTrip(tripId);
     setTrip(withTripVersions(trip));
   }, [tripId]);
+
+  const handleTripPollUpdate = useCallback((updated: TripDetail) => {
+    setTrip(withTripVersions(updated));
+  }, []);
+
+  usePollTripWhileGenerating(tripId, trip, handleTripPollUpdate);
 
   useEffect(() => {
     if (!user) return;
@@ -122,11 +129,24 @@ export default function TripDetailPage() {
   }
 
   async function handleRegenerateAll() {
-    await withBusy(async () => {
+    try {
       const { trip: updated } = await api.regenerateTrip(tripId);
       setTrip(withTripVersions(updated));
       setRegenerateAllOpen(false);
-    });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to regenerate trip');
+      setRegenerateAllOpen(false);
+    }
+  }
+
+  async function handleRetryGeneration() {
+    try {
+      const { trip: updated } = await api.regenerateTrip(tripId);
+      setTrip(withTripVersions(updated));
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to retry generation');
+    }
   }
 
   async function handleDelete() {
@@ -194,6 +214,8 @@ export default function TripDetailPage() {
   const restoreVersion = trip.versions.find((version) => version.id === restoreVersionId);
 
   const shareUrl = trip.shareToken ? buildShareUrl(trip.shareToken) : null;
+  const isGenerating = trip.status === 'generating';
+  const isFailed = trip.status === 'failed';
 
   return (
     <div className="min-h-full bg-slate-50">
@@ -209,6 +231,15 @@ export default function TripDetailPage() {
         {isFinalized && (
           <div className="mb-4 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
             This trip is finalized. Unlock it from the menu to edit.
+          </div>
+        )}
+
+        {isFailed && (
+          <div className="mb-4 flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 sm:flex-row sm:items-center sm:justify-between">
+            <p>Itinerary generation failed. You can try again or edit trip details from the menu.</p>
+            <Button variant="outline" size="sm" onClick={handleRetryGeneration} disabled={busy}>
+              Try again
+            </Button>
           </div>
         )}
 
@@ -259,7 +290,7 @@ export default function TripDetailPage() {
               Share
             </Button>
             <TripActionsMenu
-              disabled={busy}
+              disabled={busy || isGenerating}
               busy={busy}
               finalized={isFinalized}
               onRegenerate={() => setRegenerateAllOpen(true)}
@@ -273,17 +304,26 @@ export default function TripDetailPage() {
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-10">
           <section className="min-w-0 space-y-4">
             <h2 className="text-lg font-semibold text-slate-900">Itinerary</h2>
-            {trip.itinerary.length === 0 ? (
+            {isGenerating ? (
+              <div className="rounded-xl border border-amber-200 bg-white px-6 py-12">
+                <LoadingSpinner label="Generating your itinerary… This usually takes 15–30 seconds. You can leave and come back." />
+              </div>
+            ) : trip.itinerary.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
                 <p className="text-sm text-slate-500">No itinerary yet. Try regenerating the full trip.</p>
+                {!isFinalized && (
+                  <Button variant="outline" size="sm" className="mt-4" onClick={() => setRegenerateAllOpen(true)}>
+                    Regenerate trip
+                  </Button>
+                )}
               </div>
             ) : (
               trip.itinerary.map((day) => (
                 <ItineraryDay
                   key={day.day}
                   day={day}
-                  readOnly={isFinalized}
-                  busy={busy || isFinalized}
+                  readOnly={isFinalized || isGenerating}
+                  busy={busy || isFinalized || isGenerating}
                   onRemove={handleRemove}
                   onRegenerate={setRegenDay}
                   onAdd={setAddDay}
@@ -318,9 +358,9 @@ export default function TripDetailPage() {
       <ConfirmModal
         open={regenerateAllOpen}
         title="Regenerate entire trip"
-        description="Replace the full itinerary with a new generated plan. The current version is saved first."
+        description="Replace the full itinerary with a new generated plan. The current version is saved first. Generation runs in the background."
         confirmLabel="Regenerate all"
-        loading={busy}
+        loading={false}
         onClose={() => setRegenerateAllOpen(false)}
         onConfirm={handleRegenerateAll}
       />

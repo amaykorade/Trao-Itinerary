@@ -22,7 +22,7 @@ export default function TripForm() {
   const [numDaysInput, setNumDaysInput] = useState('3');
   const [budgetType, setBudgetType] = useState<BudgetType>('medium');
   const [interests, setInterests] = useState<string[]>(['food', 'culture']);
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   function toggleInterest(interest: string) {
@@ -46,7 +46,7 @@ export default function TripForm() {
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     try {
       const { trip } = await api.createTrip({
         destination,
@@ -57,15 +57,15 @@ export default function TripForm() {
       router.push(`/trips/${trip.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create trip');
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
-  if (loading) {
+  if (submitting) {
     return (
       <Card>
         <CardBody className="py-16">
-          <LoadingSpinner label="Generating itinerary… usually takes 15–30 seconds." />
+          <LoadingSpinner label="Starting generation…" />
         </CardBody>
       </Card>
     );
